@@ -256,9 +256,87 @@
     line-height:1.5;
   }
   .config-warning code{ font-family:'Space Mono', monospace; font-size:12px; }
+
+  /* --- pin lock screen --- */
+  .lock-overlay{
+    position:fixed; inset:0;
+    background: var(--bg);
+    z-index: 100;
+    display:flex; align-items:center; justify-content:center;
+    padding: 20px;
+  }
+  .lock-overlay.hidden{ display:none; }
+  .lock-card{
+    width:100%; max-width: 340px;
+    background: var(--surface);
+    border: 3px solid var(--ink);
+    border-radius: 22px;
+    padding: 30px 24px;
+    text-align:center;
+    box-shadow: 0 6px 0 var(--ink);
+  }
+  .lock-emoji{ font-size: 34px; margin-bottom: 6px; }
+  .lock-card h2{
+    font-family:'Baloo 2', sans-serif;
+    color: var(--pink);
+    -webkit-text-stroke: 0.4px var(--ink);
+    font-size: 20px;
+    margin: 0 0 4px;
+  }
+  .lock-card p{
+    font-size: 13px;
+    color: var(--muted);
+    font-weight:700;
+    margin: 0 0 18px;
+  }
+  .lock-card input{
+    width:100%;
+    background: var(--bg);
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    padding: 14px;
+    color: var(--ink);
+    font-family: 'Space Mono', monospace;
+    font-size: 20px;
+    text-align:center;
+    letter-spacing: 0.3em;
+    margin-bottom: 14px;
+  }
+  .lock-card input:focus{ outline:2px solid var(--pink); }
+  .lock-card button{
+    width:100%;
+    border: 3px solid var(--ink);
+    border-radius: 12px;
+    padding: 13px;
+    font-family:'Baloo 2', sans-serif;
+    font-weight:700;
+    font-size:15px;
+    cursor:pointer;
+    background: var(--pink);
+    color:#fff;
+    box-shadow: 0 4px 0 var(--ink);
+  }
+  .lock-card button:active{ transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  .lock-error{
+    color: var(--retiro);
+    font-size: 12px;
+    font-weight: 800;
+    height: 16px;
+    margin-top: 10px;
+  }
 </style>
 </head>
 <body>
+<div class="lock-overlay" id="lockOverlay">
+  <div class="lock-card">
+    <div class="lock-emoji">🔒🍕</div>
+    <h2>Tabla Pizza</h2>
+    <p>Ingresa el PIN para ver la caja</p>
+    <input type="password" inputmode="numeric" id="pinInput" placeholder="••••" maxlength="8" autocomplete="off">
+    <button id="pinBtn">Entrar</button>
+    <div class="lock-error" id="pinError"></div>
+  </div>
+</div>
 <div class="wrap">
   <div class="brand">
     <div class="brand-name"><span class="slice">🍕</span> Tabla Pizza</div>
@@ -316,6 +394,38 @@
     getFirestore, collection, addDoc, deleteDoc, doc,
     onSnapshot, query, orderBy, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  // ======================================================
+  // 0) PIN de acceso. Cámbialo por el número que quieras dar
+  //    a las personas de confianza. Solo dígitos o letras, lo que prefieras.
+  // ======================================================
+  const APP_PIN = "1704";
+  const LOCK_KEY = "tp_unlocked_v1";
+
+  const lockOverlay = document.getElementById('lockOverlay');
+  const pinInput = document.getElementById('pinInput');
+  const pinBtn = document.getElementById('pinBtn');
+  const pinError = document.getElementById('pinError');
+
+  function tryUnlock() {
+    if (pinInput.value === APP_PIN) {
+      localStorage.setItem(LOCK_KEY, 'yes');
+      lockOverlay.classList.add('hidden');
+      pinError.textContent = '';
+    } else {
+      pinError.textContent = 'PIN incorrecto';
+      pinInput.value = '';
+      pinInput.focus();
+    }
+  }
+
+  if (localStorage.getItem(LOCK_KEY) === 'yes') {
+    lockOverlay.classList.add('hidden');
+  } else {
+    setTimeout(() => pinInput.focus(), 100);
+  }
+  pinBtn.addEventListener('click', tryUnlock);
+  pinInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlock(); });
 
   // ======================================================
   // 1) PEGA AQUÍ tu firebaseConfig (paso 4 de la guía).
