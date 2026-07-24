@@ -65,6 +65,55 @@
   }
   .dot.off{ background:#c9b6bf; }
 
+  .reg-tabs{
+    display:flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    overflow-x: auto;
+  }
+  .reg-tab{
+    flex: 1;
+    border: 2px solid var(--ink);
+    background: var(--surface);
+    color: var(--ink);
+    border-radius: 999px;
+    padding: 9px 8px;
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    text-align:center;
+  }
+  .reg-tab.active{
+    background: var(--pink);
+    color: #fff;
+  }
+
+  .grand-total{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background: var(--ink);
+    color: #fff;
+    border-radius: 12px;
+    padding: 11px 16px;
+    margin-bottom: 16px;
+  }
+  .grand-total-label{
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #cfcfcf;
+  }
+  .grand-total-amt{
+    font-family: 'Space Mono', monospace;
+    font-weight: 700;
+    font-size: 16px;
+    color: #fff;
+  }
+
   /* --- signature: pizza-stamp ticker --- */
   .ticker{
     position: relative;
@@ -380,6 +429,13 @@
     <div class="status"><span class="dot off" id="statusDot"></span><span id="statusText">Conectando…</span></div>
   </div>
 
+  <div class="reg-tabs" id="regTabs"></div>
+
+  <div class="grand-total">
+    <span class="grand-total-label">Total de todas las cajas</span>
+    <span class="grand-total-amt" id="grandTotalAmt">RD$ 0.00</span>
+  </div>
+
   <div id="configWarning" class="config-warning" style="display:none;">
     Falta configurar Firebase. Abre este archivo, busca <code>firebaseConfig</code> cerca del final,
     y pega ahí el objeto que copiaste de la consola de Firebase (paso 4 de la guía). Guarda el archivo y vuelve a abrirlo.
@@ -480,9 +536,6 @@
     appId: "1:393750166229:web:4c8a985d7a11f87a36005c"
   };
 
-  // Identificador de tu negocio (puedes dejarlo así, es solo una carpeta interna)
-  const NEGOCIO_ID = "principal";
-
   const isConfigured = firebaseConfig.apiKey && firebaseConfig.apiKey !== "PEGA_AQUI";
 
   const statusDot = document.getElementById('statusDot');
@@ -493,6 +546,7 @@
   const totalAmtEl = document.getElementById('totalAmt');
   const totalInEl = document.getElementById('totalIn');
   const totalOutEl = document.getElementById('totalOut');
+  const grandTotalAmtEl = document.getElementById('grandTotalAmt');
 
   const fmt = (n) => 'RD$ ' + n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -505,13 +559,65 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const movsRef = collection(db, 'negocios', NEGOCIO_ID, 'movimientos');
 
+    // Cajas disponibles. "principal" conserva los datos que ya tenías (Nayadi).
+    // Puedes agregar más líneas aquí después si hace falta otra caja.
+    const REGISTERS = [
+      { id: 'principal', label: 'Nayadi', emoji: '👩' },
+      { id: 'ethan', label: 'Ethan', emoji: '🧒' },
+      { id: 'efectivo', label: 'Efectivo Pizzería', emoji: '🍕' }
+    ];
+    const REG_KEY = 'tp_active_register';
+    let currentRegisterId = localStorage.getItem(REG_KEY) || REGISTERS[0].id;
+    if (!REGISTERS.some(r => r.id === currentRegisterId)) currentRegisterId = REGISTERS[0].id;
+
+    const regTabsEl = document.getElementById('regTabs');
+    function getMovsRef() { return collection(db, 'negocios', currentRegisterId, 'movimientos'); }
+
+    function renderTabs() {
+      regTabsEl.innerHTML = REGISTERS.map(r => `
+        <button class="reg-tab ${r.id === currentRegisterId ? 'active' : ''}" data-id="${r.id}">${r.emoji} ${r.label}</button>
+      `).join('');
+      regTabsEl.querySelectorAll('.reg-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (btn.dataset.id === currentRegisterId) return;
+          currentRegisterId = btn.dataset.id;
+          localStorage.setItem(REG_KEY, currentRegisterId);
+          renderTabs();
+          switchListener();
+        });
+      });
+    }
+    renderTabs();
+
+    // ---- total combinado de todas las cajas (siempre activo, sin importar la pestaña) ----
+    const registerNets = {};
+    function updateGrandTotal() {
+      const sum = Object.values(registerNets).reduce((a, b) => a + b, 0);
+      grandTotalAmtEl.textContent = fmt(sum);
+    }
+    function watchAllRegistersTotals() {
+      REGISTERS.forEach(r => {
+        const q = query(collection(db, 'negocios', r.id, 'movimientos'));
+        onSnapshot(q, (snap) => {
+          let net = 0;
+          snap.forEach(d => {
+            const m = d.data();
+            net += m.tipo === 'ingreso' ? m.monto : -m.monto;
+          });
+          registerNets[r.id] = net;
+          updateGrandTotal();
+        });
+      });
+    }
+
+    let totalsWatching = false;
     onAuthStateChanged(auth, (user) => {
       if (user) {
         statusDot.classList.remove('off');
         statusText.textContent = 'Sincronizado';
-        listenMovements();
+        switchListener();
+        if (!totalsWatching) { totalsWatching = true; watchAllRegistersTotals(); }
       } else {
         statusDot.classList.add('off');
         statusText.textContent = 'Conectando…';
@@ -524,9 +630,14 @@
     });
 
     let unsub = null;
+    function switchListener() {
+      if (unsub) { unsub(); unsub = null; }
+      listEl.innerHTML = '<div class="empty">Cargando…</div>';
+      monthlyListEl.innerHTML = '';
+      listenMovements();
+    }
     function listenMovements() {
-      if (unsub) return;
-      const q = query(movsRef, orderBy('creadoEn', 'desc'));
+      const q = query(getMovsRef(), orderBy('creadoEn', 'desc'));
       unsub = onSnapshot(q, (snap) => {
         const movs = [];
         snap.forEach((d) => movs.push({ id: d.id, ...d.data() }));
@@ -602,7 +713,7 @@
       listEl.querySelectorAll('.mov-del').forEach(btn => {
         btn.addEventListener('click', async () => {
           if (confirm('¿Eliminar este movimiento?')) {
-            await deleteDoc(doc(db, 'negocios', NEGOCIO_ID, 'movimientos', btn.dataset.id));
+            await deleteDoc(doc(db, 'negocios', currentRegisterId, 'movimientos', btn.dataset.id));
           }
         });
       });
@@ -647,7 +758,7 @@
       confirmBtn.disabled = true;
       confirmBtn.textContent = 'Guardando…';
       try {
-        await addDoc(movsRef, {
+        await addDoc(getMovsRef(), {
           tipo: currentTipo,
           monto: monto,
           nota: notaInput.value.trim(),
