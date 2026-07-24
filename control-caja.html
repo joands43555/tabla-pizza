@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tabla Pizza · Caja</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #FFF1F5;
+    --surface: #FFFFFF;
+    --surface-2: #FFE3EC;
+    --ink: #1A1A1A;
+    --pink: #E91B78;
+    --pink-dark: #B4105B;
+    --pink-soft: #FBD3E4;
+    --muted: #9A6B7C;
+    --ingreso: #1F8F5F;
+    --ingreso-bg: #E1F3E9;
+    --retiro: #D9463A;
+    --retiro-bg: #FCE3E0;
+  }
+  *{ box-sizing: border-box; }
+  html, body{
+    margin:0; padding:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Nunito', sans-serif;
+    min-height: 100vh;
+  }
+  .wrap{
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 22px 16px 90px;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom: 20px;
+  }
+  .brand-name{
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 800;
+    font-size: 22px;
+    color: var(--pink);
+    -webkit-text-stroke: 0.5px var(--ink);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .brand-name .slice{ font-size: 22px; -webkit-text-stroke: 0; }
+  .status{
+    font-size: 11px;
+    color: var(--muted);
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-weight:700;
+  }
+  .dot{
+    width:8px; height:8px; border-radius:50%;
+    background: var(--ingreso);
+  }
+  .dot.off{ background:#c9b6bf; }
+
+  /* --- signature: pizza-stamp ticker --- */
+  .ticker{
+    position: relative;
+    background: var(--surface);
+    border: 3px solid var(--ink);
+    border-radius: 22px;
+    padding: 24px 20px 18px;
+    margin-bottom: 20px;
+    box-shadow: 0 6px 0 var(--ink);
+  }
+  .ticker-badge{
+    position:absolute;
+    top:-16px; right:18px;
+    background: var(--pink);
+    border: 3px solid var(--ink);
+    border-radius: 50%;
+    width:40px; height:40px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px;
+    transform: rotate(8deg);
+  }
+  .ticker-label{
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .ticker-total{
+    font-family: 'Space Mono', monospace;
+    font-size: 40px;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .ticker-sub{
+    display:flex;
+    gap: 18px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 2px dashed var(--pink-soft);
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+  }
+  .ticker-sub div span{
+    display:block;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+  .ticker-sub .in{ color: var(--ingreso); }
+  .ticker-sub .out{ color: var(--retiro); }
+
+  .actions{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .btn{
+    border: 3px solid var(--ink);
+    border-radius: 14px;
+    padding: 14px 10px;
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    cursor:pointer;
+    transition: transform .08s ease;
+    box-shadow: 0 4px 0 var(--ink);
+  }
+  .btn:active{ transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  .btn.ingreso{ background: var(--ingreso-bg); color: var(--ingreso); }
+  .btn.retiro{ background: var(--retiro-bg); color: var(--retiro); }
+
+  .section-label{
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 4px 0 10px 4px;
+  }
+
+  .day-group{ margin-bottom: 16px; }
+  .day-header{
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--pink-dark);
+    margin: 0 0 8px 4px;
+    text-transform: capitalize;
+  }
+  .mov{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    background: var(--surface);
+    border: 2px solid var(--ink);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .mov-left{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .mov-note{ font-size: 13px; font-weight:700; color: var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mov-time{ font-size: 11px; color: var(--muted); font-family:'Space Mono', monospace; }
+  .mov-amt{ font-family:'Space Mono', monospace; font-weight:700; font-size:15px; flex-shrink:0; padding-left:10px; }
+  .mov-amt.ingreso{ color: var(--ingreso); }
+  .mov-amt.retiro{ color: var(--retiro); }
+  .mov-del{
+    background:none; border:none; color:var(--muted);
+    font-size:16px; cursor:pointer; padding:2px 8px;
+    font-weight:800;
+  }
+  .mov-del:hover{ color: var(--retiro); }
+
+  .empty{
+    text-align:center;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight:700;
+    padding: 30px 10px;
+  }
+
+  /* modal */
+  .overlay{
+    position:fixed; inset:0;
+    background: rgba(26,26,26,0.45);
+    display:flex; align-items:flex-end; justify-content:center;
+    z-index: 50;
+  }
+  .overlay.hidden{ display:none; }
+  .sheet{
+    width:100%; max-width: 480px;
+    background: var(--surface);
+    border-top: 3px solid var(--ink);
+    border-radius: 22px 22px 0 0;
+    padding: 22px 20px 28px;
+  }
+  .sheet h2{
+    font-family: 'Baloo 2', sans-serif;
+    font-size: 18px;
+    margin: 0 0 16px;
+    font-weight: 700;
+  }
+  .sheet h2.ingreso{ color: var(--ingreso); }
+  .sheet h2.retiro{ color: var(--retiro); }
+  .field{ margin-bottom: 14px; }
+  .field label{
+    display:block; font-size:11px; font-weight:800; text-transform:uppercase;
+    letter-spacing:0.05em; color: var(--muted); margin-bottom:6px;
+  }
+  .field input{
+    width:100%;
+    background: var(--bg);
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    padding: 12px;
+    color: var(--ink);
+    font-family: 'Space Mono', monospace;
+    font-size: 16px;
+  }
+  .field input:focus{ outline:2px solid var(--pink); }
+  .sheet-actions{ display:flex; gap:10px; margin-top:6px; }
+  .sheet-actions button{
+    flex:1; border: 2px solid var(--ink); border-radius:10px; padding:13px;
+    font-family: 'Baloo 2', sans-serif;
+    font-weight:700; font-size:14px; cursor:pointer;
+  }
+  .sheet-cancel{ background: var(--surface-2); color: var(--ink); }
+  .sheet-confirm.ingreso{ background: var(--ingreso); color: #fff; }
+  .sheet-confirm.retiro{ background: var(--retiro); color: #fff; }
+  .sheet-confirm.ingreso:disabled, .sheet-confirm.retiro:disabled{ opacity:0.5; }
+
+  .config-warning{
+    background: var(--retiro-bg);
+    color: var(--retiro);
+    border: 2px solid var(--retiro);
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 13px;
+    font-weight:700;
+    margin-bottom: 20px;
+    line-height:1.5;
+  }
+  .config-warning code{ font-family:'Space Mono', monospace; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="brand-name"><span class="slice">🍕</span> Tabla Pizza</div>
+    <div class="status"><span class="dot off" id="statusDot"></span><span id="statusText">Conectando…</span></div>
+  </div>
+
+  <div id="configWarning" class="config-warning" style="display:none;">
+    Falta configurar Firebase. Abre este archivo, busca <code>firebaseConfig</code> cerca del final,
+    y pega ahí el objeto que copiaste de la consola de Firebase (paso 4 de la guía). Guarda el archivo y vuelve a abrirlo.
+  </div>
+
+  <div class="ticker">
+    <div class="ticker-badge">🍕</div>
+    <div class="ticker-label">Saldo actual</div>
+    <div class="ticker-total" id="totalAmt">RD$ 0.00</div>
+    <div class="ticker-sub">
+      <div class="in"><span>Ingresado</span><span id="totalIn">RD$ 0.00</span></div>
+      <div class="out"><span>Retirado</span><span id="totalOut">RD$ 0.00</span></div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn ingreso" id="openIngreso">+ Ingreso</button>
+    <button class="btn retiro" id="openRetiro">− Retiro</button>
+  </div>
+
+  <div class="section-label">Movimientos</div>
+  <div id="list"></div>
+</div>
+
+<div class="overlay hidden" id="overlay">
+  <div class="sheet">
+    <h2 id="sheetTitle"></h2>
+    <div class="field">
+      <label>Monto (RD$)</label>
+      <input type="number" inputmode="decimal" step="0.01" min="0" id="montoInput" placeholder="0.00">
+    </div>
+    <div class="field">
+      <label>Nota (opcional)</label>
+      <input type="text" id="notaInput" placeholder="Ej. venta del día, compra de harina…">
+    </div>
+    <div class="sheet-actions">
+      <button class="sheet-cancel" id="cancelBtn">Cancelar</button>
+      <button id="confirmBtn">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getAuth, signInAnonymously, onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  import {
+    getFirestore, collection, addDoc, deleteDoc, doc,
+    onSnapshot, query, orderBy, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  // ======================================================
+  // 1) PEGA AQUÍ tu firebaseConfig (paso 4 de la guía).
+  //    Reemplaza todo este objeto por el que te dio Firebase.
+  // ======================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyB6oreek5As19-0BPz9qvW7xr3uAEWdj3Y",
+    authDomain: "tabla-pizza-363b5.firebaseapp.com",
+    projectId: "tabla-pizza-363b5",
+    storageBucket: "tabla-pizza-363b5.firebasestorage.app",
+    messagingSenderId: "393750166229",
+    appId: "1:393750166229:web:4c8a985d7a11f87a36005c"
+  };
+
+  // Identificador de tu negocio (puedes dejarlo así, es solo una carpeta interna)
+  const NEGOCIO_ID = "principal";
+
+  const isConfigured = firebaseConfig.apiKey && firebaseConfig.apiKey !== "PEGA_AQUI";
+
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const configWarning = document.getElementById('configWarning');
+  const listEl = document.getElementById('list');
+  const totalAmtEl = document.getElementById('totalAmt');
+  const totalInEl = document.getElementById('totalIn');
+  const totalOutEl = document.getElementById('totalOut');
+
+  const fmt = (n) => 'RD$ ' + n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  if (!isConfigured) {
+    configWarning.style.display = 'block';
+    statusText.textContent = 'Sin configurar';
+    listEl.innerHTML = '<div class="empty">Configura Firebase para empezar a registrar movimientos.</div>';
+  } else {
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const movsRef = collection(db, 'negocios', NEGOCIO_ID, 'movimientos');
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        statusDot.classList.remove('off');
+        statusText.textContent = 'Sincronizado';
+        listenMovements();
+      } else {
+        statusDot.classList.add('off');
+        statusText.textContent = 'Conectando…';
+      }
+    });
+
+    signInAnonymously(auth).catch((err) => {
+      statusText.textContent = 'Error de conexión';
+      console.error(err);
+    });
+
+    let unsub = null;
+    function listenMovements() {
+      if (unsub) return;
+      const q = query(movsRef, orderBy('creadoEn', 'desc'));
+      unsub = onSnapshot(q, (snap) => {
+        const movs = [];
+        snap.forEach((d) => movs.push({ id: d.id, ...d.data() }));
+        render(movs);
+      }, (err) => {
+        statusText.textContent = 'Error leyendo datos';
+        console.error(err);
+      });
+    }
+
+    function render(movs) {
+      let totalIn = 0, totalOut = 0;
+      movs.forEach(m => {
+        if (m.tipo === 'ingreso') totalIn += m.monto;
+        else totalOut += m.monto;
+      });
+      totalAmtEl.textContent = fmt(totalIn - totalOut);
+      totalInEl.textContent = fmt(totalIn);
+      totalOutEl.textContent = fmt(totalOut);
+
+      if (movs.length === 0) {
+        listEl.innerHTML = '<div class="empty">Todavía no hay movimientos. Agrega el primero arriba.</div>';
+        return;
+      }
+
+      const groups = {};
+      movs.forEach(m => {
+        const dt = m.creadoEn?.toDate ? m.creadoEn.toDate() : new Date();
+        const dayKey = dt.toLocaleDateString('es-DO', { weekday: 'long', day: 'numeric', month: 'long' });
+        (groups[dayKey] = groups[dayKey] || []).push({ ...m, _dt: dt });
+      });
+
+      listEl.innerHTML = Object.entries(groups).map(([day, items]) => `
+        <div class="day-group">
+          <div class="day-header">${day}</div>
+          ${items.map(m => `
+            <div class="mov">
+              <div class="mov-left">
+                <div class="mov-note">${m.nota ? escapeHtml(m.nota) : (m.tipo === 'ingreso' ? 'Ingreso' : 'Retiro')}</div>
+                <div class="mov-time">${m._dt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}</div>
+              </div>
+              <div class="mov-amt ${m.tipo}">${m.tipo === 'ingreso' ? '+' : '−'} ${fmt(m.monto)}</div>
+              <button class="mov-del" data-id="${m.id}" title="Eliminar">✕</button>
+            </div>
+          `).join('')}
+        </div>
+      `).join('');
+
+      listEl.querySelectorAll('.mov-del').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (confirm('¿Eliminar este movimiento?')) {
+            await deleteDoc(doc(db, 'negocios', NEGOCIO_ID, 'movimientos', btn.dataset.id));
+          }
+        });
+      });
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ---- modal / formulario ----
+    const overlay = document.getElementById('overlay');
+    const sheetTitle = document.getElementById('sheetTitle');
+    const montoInput = document.getElementById('montoInput');
+    const notaInput = document.getElementById('notaInput');
+    const confirmBtn = document.getElementById('confirmBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    let currentTipo = 'ingreso';
+
+    function openSheet(tipo) {
+      currentTipo = tipo;
+      sheetTitle.textContent = tipo === 'ingreso' ? 'Registrar ingreso' : 'Registrar retiro';
+      sheetTitle.className = tipo;
+      confirmBtn.className = 'sheet-confirm ' + tipo;
+      confirmBtn.textContent = 'Guardar';
+      montoInput.value = '';
+      notaInput.value = '';
+      overlay.classList.remove('hidden');
+      setTimeout(() => montoInput.focus(), 50);
+    }
+    function closeSheet() { overlay.classList.add('hidden'); }
+
+    document.getElementById('openIngreso').addEventListener('click', () => openSheet('ingreso'));
+    document.getElementById('openRetiro').addEventListener('click', () => openSheet('retiro'));
+    cancelBtn.addEventListener('click', closeSheet);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSheet(); });
+
+    confirmBtn.addEventListener('click', async () => {
+      const monto = parseFloat(montoInput.value);
+      if (!monto || monto <= 0) { montoInput.focus(); return; }
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Guardando…';
+      try {
+        await addDoc(movsRef, {
+          tipo: currentTipo,
+          monto: monto,
+          nota: notaInput.value.trim(),
+          creadoEn: serverTimestamp()
+        });
+        closeSheet();
+      } catch (err) {
+        alert('No se pudo guardar. Revisa tu conexión o las reglas de Firestore.');
+        console.error(err);
+      } finally {
+        confirmBtn.disabled = false;
+      }
+    });
+  }
+</script>
+</body>
+</html>
