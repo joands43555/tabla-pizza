@@ -155,6 +155,43 @@
   }
 
   .day-group{ margin-bottom: 16px; }
+
+  .month-card{
+    background: var(--surface);
+    border: 2px solid var(--ink);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .month-card-header{
+    font-family: 'Baloo 2', sans-serif;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--pink-dark);
+    text-transform: capitalize;
+    margin-bottom: 10px;
+  }
+  .month-card-rows{
+    display:flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+  }
+  .month-card-rows div span{
+    display:block;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 3px;
+  }
+  .month-card-rows .in{ color: var(--ingreso); }
+  .month-card-rows .out{ color: var(--retiro); }
+  .month-card-rows .net{ color: var(--ink); font-weight:700; }
+
   .day-header{
     font-family: 'Baloo 2', sans-serif;
     font-weight: 700;
@@ -363,6 +400,9 @@
     <button class="btn retiro" id="openRetiro">− Retiro</button>
   </div>
 
+  <div class="section-label">Resumen mensual</div>
+  <div id="monthlyList"></div>
+
   <div class="section-label">Movimientos</div>
   <div id="list"></div>
 </div>
@@ -449,6 +489,7 @@
   const statusText = document.getElementById('statusText');
   const configWarning = document.getElementById('configWarning');
   const listEl = document.getElementById('list');
+  const monthlyListEl = document.getElementById('monthlyList');
   const totalAmtEl = document.getElementById('totalAmt');
   const totalInEl = document.getElementById('totalIn');
   const totalOutEl = document.getElementById('totalOut');
@@ -459,6 +500,7 @@
     configWarning.style.display = 'block';
     statusText.textContent = 'Sin configurar';
     listEl.innerHTML = '<div class="empty">Configura Firebase para empezar a registrar movimientos.</div>';
+    monthlyListEl.innerHTML = '<div class="empty">Configura Firebase para ver el resumen mensual.</div>';
   } else {
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -507,8 +549,32 @@
 
       if (movs.length === 0) {
         listEl.innerHTML = '<div class="empty">Todavía no hay movimientos. Agrega el primero arriba.</div>';
+        monthlyListEl.innerHTML = '<div class="empty">Aún no hay datos para mostrar por mes.</div>';
         return;
       }
+
+      // ---- resumen mensual ----
+      const monthGroups = {};
+      movs.forEach(m => {
+        const dt = m.creadoEn?.toDate ? m.creadoEn.toDate() : new Date();
+        const key = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
+        if (!monthGroups[key]) {
+          monthGroups[key] = { label: dt.toLocaleDateString('es-DO', { month: 'long', year: 'numeric' }), in: 0, out: 0, sortKey: key };
+        }
+        if (m.tipo === 'ingreso') monthGroups[key].in += m.monto;
+        else monthGroups[key].out += m.monto;
+      });
+      const monthsSorted = Object.values(monthGroups).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+      monthlyListEl.innerHTML = monthsSorted.map(mo => `
+        <div class="month-card">
+          <div class="month-card-header">${mo.label}</div>
+          <div class="month-card-rows">
+            <div class="in"><span>Ingresado</span>${fmt(mo.in)}</div>
+            <div class="out"><span>Retirado</span>${fmt(mo.out)}</div>
+            <div class="net"><span>Quedó</span>${fmt(mo.in - mo.out)}</div>
+          </div>
+        </div>
+      `).join('');
 
       const groups = {};
       movs.forEach(m => {
