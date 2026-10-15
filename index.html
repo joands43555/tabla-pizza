@@ -416,6 +416,44 @@
     height: 16px;
     margin-top: 10px;
   }
+
+  /* --- voucher --- */
+  .mov-rcpt{
+    background:none; border:none; font-size:16px; cursor:pointer; padding:2px 6px;
+  }
+  .voucher-overlay{
+    position:fixed; inset:0;
+    background: rgba(26,26,26,0.6);
+    z-index: 80;
+    display:flex; align-items:center; justify-content:center;
+    padding: 16px;
+    overflow-y:auto;
+  }
+  .voucher-overlay.hidden{ display:none; }
+  .voucher-box{
+    width:100%; max-width: 360px;
+    display:flex; flex-direction:column; gap:12px;
+    margin: auto;
+  }
+  .voucher-box canvas{
+    width:100%; height:auto;
+    border-radius: 14px;
+    border: 3px solid var(--ink);
+    background:#fff;
+    display:block;
+  }
+  .voucher-actions{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+  .voucher-actions button{
+    border: 3px solid var(--ink);
+    border-radius: 12px;
+    padding: 12px 8px;
+    font-family:'Baloo 2', sans-serif;
+    font-weight:700; font-size:14px; cursor:pointer;
+    background: var(--pink); color:#fff;
+    box-shadow: 0 4px 0 var(--ink);
+  }
+  .voucher-actions button:active{ transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
+  .voucher-actions .v-close{ grid-column: 1 / -1; background: var(--surface); color: var(--ink); }
 </style>
 </head>
 <body>
@@ -487,6 +525,17 @@
   </div>
 </div>
 
+<div class="voucher-overlay hidden" id="voucherOverlay">
+  <div class="voucher-box">
+    <canvas id="voucherCanvas" width="600" height="800"></canvas>
+    <div class="voucher-actions">
+      <button id="voucherDownload">⬇ Descargar</button>
+      <button id="voucherShare">📤 Compartir</button>
+      <button class="v-close" id="voucherClose">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import {
@@ -496,6 +545,200 @@
     getFirestore, collection, addDoc, deleteDoc, doc,
     onSnapshot, query, orderBy, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+
+  // ======================================================
+  // Voucher (comprobante) con el logo de Tabla Pizza
+  // ======================================================
+  // <voucher>
+  const LOGO_SRC = 'icon-512.png';
+  let logoImg = null;
+  function loadLogo() {
+    if (logoImg) return Promise.resolve(logoImg);
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => { logoImg = img; resolve(img); };
+      img.onerror = () => resolve(null);
+      img.src = LOGO_SRC;
+    });
+  }
+
+  function wrapText(ctx, text, maxWidth, maxLines) {
+    const words = String(text).split(/\s+/);
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (ctx.measureText(test).width <= maxWidth) { line = test; }
+      else {
+        if (line) lines.push(line);
+        line = w;
+      }
+    }
+    if (line) lines.push(line);
+    if (lines.length > maxLines) {
+      lines.length = maxLines;
+      let last = lines[maxLines - 1];
+      while (last.length > 1 && ctx.measureText(last + '…').width > maxWidth) last = last.slice(0, -1);
+      lines[maxLines - 1] = last + '…';
+    }
+    return lines;
+  }
+
+  async function drawVoucher(canvas, v) {
+    // v: { tipo, monto, nota, fecha (Date), caja, numero }
+    try {
+      await Promise.all([
+        document.fonts.load("800 30px 'Baloo 2'"),
+        document.fonts.load("700 30px 'Space Mono'"),
+        document.fonts.load("700 20px 'Nunito'")
+      ]);
+    } catch (e) { /* si no cargan, se usan fuentes del sistema */ }
+    const logo = await loadLogo();
+
+    const W = canvas.width, H = canvas.height;
+    const ctx = canvas.getContext('2d');
+    const INK = '#1A1A1A', PINK = '#E91B78', MUTED = '#9A6B7C';
+    const esIngreso = v.tipo === 'ingreso';
+    const COLOR = esIngreso ? '#1F8F5F' : '#D9463A';
+    const fmtMoney = 'RD$ ' + Number(v.monto).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // fondo
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, W, H);
+    // franja superior rosa
+    ctx.fillStyle = PINK;
+    ctx.fillRect(0, 0, W, 150);
+    ctx.fillStyle = INK;
+    ctx.fillRect(0, 150, W, 6);
+
+    // logo circular
+    const cx = W / 2, cy = 150, r = 95;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r + 8, 0, Math.PI * 2); ctx.fillStyle = INK; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+    if (logo) {
+      // el círculo del logo ocupa casi toda la imagen (centro ~ 255,258, radio ~ 245)
+      const s = (r * 2) / 490;
+      ctx.drawImage(logo, cx - 255 * s, cy - 258 * s, logo.width * s, logo.height * s);
+    } else {
+      ctx.fillStyle = PINK; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.fillStyle = '#fff'; ctx.font = "800 40px 'Baloo 2', sans-serif"; ctx.textAlign = 'center';
+      ctx.fillText('Tabla Pizza', cx, cy + 14);
+    }
+    ctx.restore();
+
+    ctx.textAlign = 'center';
+    let y = 150 + r + 56;
+
+    ctx.fillStyle = INK;
+    ctx.font = "800 26px 'Baloo 2', sans-serif";
+    ctx.fillText(esIngreso ? 'COMPROBANTE DE INGRESO' : 'COMPROBANTE DE RETIRO', cx, y);
+    y += 30;
+    ctx.fillStyle = MUTED;
+    ctx.font = "700 18px 'Nunito', sans-serif";
+    ctx.fillText('Caja: ' + v.caja, cx, y);
+
+    // monto
+    y += 66;
+    ctx.fillStyle = COLOR;
+    let size = 48;
+    ctx.font = `700 ${size}px 'Space Mono', monospace`;
+    while (ctx.measureText(fmtMoney).width > W - 80 && size > 24) {
+      size -= 2; ctx.font = `700 ${size}px 'Space Mono', monospace`;
+    }
+    ctx.fillText((esIngreso ? '+ ' : '− ') + fmtMoney, cx, y);
+
+    // línea punteada
+    y += 28;
+    ctx.strokeStyle = PINK; ctx.lineWidth = 3; ctx.setLineDash([10, 8]);
+    ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(W - 40, y); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // filas
+    const fecha = v.fecha instanceof Date ? v.fecha : new Date();
+    const fechaStr = fecha.toLocaleDateString('es-DO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const horaStr = fecha.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+
+    function row(label, value, maxLines) {
+      y += 38;
+      ctx.textAlign = 'left';
+      ctx.fillStyle = MUTED; ctx.font = "800 15px 'Nunito', sans-serif";
+      ctx.fillText(label.toUpperCase(), 44, y);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = INK; ctx.font = "700 19px 'Nunito', sans-serif";
+      const lines = wrapText(ctx, value, W - 88 - 130, maxLines || 1);
+      lines.forEach((ln, i) => { ctx.fillText(ln, W - 44, y + i * 26); });
+      y += (lines.length - 1) * 26;
+    }
+    row('Fecha', fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1), 2);
+    row('Hora', horaStr);
+    row('Nota', v.nota && v.nota.trim() ? v.nota.trim() : (esIngreso ? 'Ingreso' : 'Retiro'), 3);
+    row('N.º', v.numero);
+
+    // pie
+    ctx.textAlign = 'center';
+    ctx.strokeStyle = PINK; ctx.lineWidth = 3; ctx.setLineDash([10, 8]);
+    const fy = H - 118;
+    ctx.beginPath(); ctx.moveTo(40, fy); ctx.lineTo(W - 40, fy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = PINK; ctx.font = "800 24px 'Baloo 2', sans-serif";
+    ctx.fillText('¡Gracias! · Pizza hecha con pasión', cx, fy + 40);
+    ctx.fillStyle = MUTED; ctx.font = "700 16px 'Nunito', sans-serif";
+    ctx.fillText('@tabla.pizzard  ·  Desde 2018  ·  829-339-5009', cx, fy + 70);
+  }
+  // </voucher>
+
+  const voucherOverlay = document.getElementById('voucherOverlay');
+  const voucherCanvas = document.getElementById('voucherCanvas');
+  let currentVoucher = null;
+
+  async function showVoucher(v) {
+    currentVoucher = v;
+    voucherOverlay.classList.remove('hidden');
+    await drawVoucher(voucherCanvas, v);
+  }
+  function voucherFileName() {
+    return 'voucher-tabla-pizza-' + (currentVoucher ? currentVoucher.numero : 'x') + '.png';
+  }
+  function canvasToBlob() {
+    return new Promise((resolve, reject) => {
+      try {
+        voucherCanvas.toBlob((b) => b ? resolve(b) : reject(new Error('sin imagen')), 'image/png');
+      } catch (e) { reject(e); }
+    });
+  }
+  document.getElementById('voucherClose').addEventListener('click', () => voucherOverlay.classList.add('hidden'));
+  voucherOverlay.addEventListener('click', (e) => { if (e.target === voucherOverlay) voucherOverlay.classList.add('hidden'); });
+  document.getElementById('voucherDownload').addEventListener('click', async () => {
+    try {
+      const blob = await canvasToBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = voucherFileName();
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (err) {
+      alert('No se pudo descargar la imagen. Toma una captura de pantalla del voucher.');
+      console.error(err);
+    }
+  });
+  document.getElementById('voucherShare').addEventListener('click', async () => {
+    try {
+      const blob = await canvasToBlob();
+      const file = new File([blob], voucherFileName(), { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Voucher Tabla Pizza' });
+      } else {
+        alert('Compartir no está disponible en este dispositivo. Usa "Descargar".');
+      }
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+      alert('No se pudo compartir. Usa "Descargar" o toma una captura de pantalla.');
+      console.error(err);
+    }
+  });
 
   // ======================================================
   // 0) PIN de acceso. Cámbialo por el número que quieras dar
@@ -570,7 +813,6 @@
     // Puedes agregar más líneas aquí después si hace falta otra caja.
     const REGISTERS = [
       { id: 'principal', label: 'Nayadi', emoji: '👩' },
-      { id: 'ethan', label: 'Ethan', emoji: '🧒' },
       { id: 'efectivo', label: 'Efectivo Pizzería', emoji: '🍕' }
     ];
     const REG_KEY = 'tp_active_register';
@@ -710,11 +952,25 @@
                 <div class="mov-time">${m._dt.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })}</div>
               </div>
               <div class="mov-amt ${m.tipo}">${m.tipo === 'ingreso' ? '+' : '−'} ${fmt(m.monto)}</div>
+              <button class="mov-rcpt" data-id="${m.id}" title="Ver voucher">🧾</button>
               <button class="mov-del" data-id="${m.id}" title="Eliminar">✕</button>
             </div>
           `).join('')}
         </div>
       `).join('');
+
+      listEl.querySelectorAll('.mov-rcpt').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const m = movs.find(x => x.id === btn.dataset.id);
+          if (!m) return;
+          const dt = m.creadoEn?.toDate ? m.creadoEn.toDate() : new Date();
+          showVoucher({
+            tipo: m.tipo, monto: m.monto, nota: m.nota || '', fecha: dt,
+            caja: REGISTERS.find(r => r.id === currentRegisterId).label,
+            numero: m.id.slice(0, 6).toUpperCase()
+          });
+        });
+      });
 
       listEl.querySelectorAll('.mov-del').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -764,13 +1020,20 @@
       confirmBtn.disabled = true;
       confirmBtn.textContent = 'Guardando…';
       try {
-        await addDoc(getMovsRef(), {
-          tipo: currentTipo,
+        const notaGuardada = notaInput.value.trim();
+        const tipoGuardado = currentTipo;
+        const ref = await addDoc(getMovsRef(), {
+          tipo: tipoGuardado,
           monto: monto,
-          nota: notaInput.value.trim(),
+          nota: notaGuardada,
           creadoEn: serverTimestamp()
         });
         closeSheet();
+        showVoucher({
+          tipo: tipoGuardado, monto: monto, nota: notaGuardada, fecha: new Date(),
+          caja: REGISTERS.find(r => r.id === currentRegisterId).label,
+          numero: ref.id.slice(0, 6).toUpperCase()
+        });
       } catch (err) {
         alert('No se pudo guardar. Revisa tu conexión o las reglas de Firestore.');
         console.error(err);
