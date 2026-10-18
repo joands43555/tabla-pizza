@@ -989,6 +989,7 @@
       { id: 'principal', label: 'Nayadi', emoji: '👩' },
       { id: 'efectivo', label: 'Efectivo Pizzería', emoji: '🍕' }
     ];
+    const PROTECTED_REGISTER_ID = 'principal';
     let REGISTERS = DEFAULT_REGISTERS.slice();
     const REG_KEY = 'tp_active_register';
     let currentRegisterId = localStorage.getItem(REG_KEY) || DEFAULT_REGISTERS[0].id;
@@ -1015,7 +1016,8 @@
       document.getElementById('addRegBtn').addEventListener('click', openNewRegister);
 
       const cur = REGISTERS.find(r => r.id === currentRegisterId);
-      if (cur && REGISTERS.length > 1) {
+      // La caja de Nayadi ('principal') está protegida: no muestra la opción de eliminar.
+      if (cur && cur.id !== PROTECTED_REGISTER_ID && REGISTERS.length > 1) {
         regActionsEl.innerHTML = `<button class="reg-del" id="delRegBtn">🗑 Eliminar caja «${esc(cur.label)}»</button>`;
         document.getElementById('delRegBtn').addEventListener('click', deleteCurrentRegister);
       } else {
@@ -1065,7 +1067,7 @@
     async function deleteCurrentRegister() {
       if (REGISTERS.length <= 1) { alert('Debe quedar al menos una caja.'); return; }
       const reg = REGISTERS.find(r => r.id === currentRegisterId);
-      if (!reg) return;
+      if (!reg || reg.id === PROTECTED_REGISTER_ID) return;
       const ok = confirm('¿Eliminar la caja «' + reg.label + '» con TODOS sus movimientos y cálculos?\n\nEsto no se puede deshacer.');
       if (!ok) return;
       const btn = document.getElementById('delRegBtn');
