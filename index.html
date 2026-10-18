@@ -75,7 +75,7 @@
     display:flex;
     gap: 8px;
     margin-bottom: 20px;
-    overflow-x: auto;
+    flex-wrap: wrap;
   }
   .reg-tab{
     flex: 1;
@@ -95,6 +95,21 @@
     background: var(--pink);
     color: #fff;
   }
+  .reg-tab{ flex: 1 0 auto; }
+  .reg-tab.add{
+    border-style: dashed;
+    background: transparent;
+    flex: 0 0 auto;
+    padding: 9px 14px;
+  }
+  .reg-actions{ display:flex; justify-content:flex-end; margin: -10px 0 16px; }
+  .reg-del{
+    background:none; border:none; cursor:pointer;
+    font-family:'Nunito', sans-serif; font-weight:800; font-size:12px;
+    color: var(--red, #D9463A); padding: 4px 2px;
+  }
+  .reg-del:disabled{ opacity:.5; cursor:default; }
+  .field .err{ color:#D9463A; font-size:12px; font-weight:800; margin-top:6px; min-height:1em; }
 
   .grand-total{
     display:flex;
@@ -484,6 +499,7 @@
   </div>
 
   <div class="reg-tabs" id="regTabs"></div>
+  <div class="reg-actions" id="regActions"></div>
 
   <div class="grand-total">
     <span class="grand-total-label">Total de todas las cajas</span>
@@ -536,6 +552,21 @@
   </div>
 </div>
 
+<div class="overlay hidden" id="newRegOverlay">
+  <div class="sheet">
+    <h2>Nueva caja</h2>
+    <div class="field">
+      <label>Nombre de la caja</label>
+      <input type="text" id="newRegName" maxlength="30" placeholder="Ej. Delivery, Caja 2, Propinas…" autocomplete="off">
+      <div class="err" id="newRegErr"></div>
+    </div>
+    <div class="sheet-actions">
+      <button class="sheet-cancel" id="newRegCancel">Cancelar</button>
+      <button id="newRegCreate">Crear</button>
+    </div>
+  </div>
+</div>
+
 <div class="voucher-overlay hidden" id="voucherOverlay">
   <div class="voucher-box">
     <canvas id="voucherCanvas" width="600" height="800"></canvas>
@@ -555,7 +586,8 @@
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
     getFirestore, collection, addDoc, deleteDoc, doc,
-    onSnapshot, query, orderBy, serverTimestamp
+    onSnapshot, query, orderBy, serverTimestamp,
+    getDocs, setDoc, writeBatch
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 
@@ -951,24 +983,27 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Cajas disponibles. "principal" conserva los datos que ya tenías (Nayadi).
-    // Puedes agregar más líneas aquí después si hace falta otra caja.
-    const REGISTERS = [
+    // Cajas: la lista se guarda en Firebase (se puede crear y eliminar desde la app).
+    // Si todavía no existe lista guardada, se usan estas dos (conservan tus datos actuales).
+    const DEFAULT_REGISTERS = [
       { id: 'principal', label: 'Nayadi', emoji: '👩' },
       { id: 'efectivo', label: 'Efectivo Pizzería', emoji: '🍕' }
     ];
+    let REGISTERS = DEFAULT_REGISTERS.slice();
     const REG_KEY = 'tp_active_register';
-    let currentRegisterId = localStorage.getItem(REG_KEY) || REGISTERS[0].id;
-    if (!REGISTERS.some(r => r.id === currentRegisterId)) currentRegisterId = REGISTERS[0].id;
+    let currentRegisterId = localStorage.getItem(REG_KEY) || DEFAULT_REGISTERS[0].id;
+    const cajasDocRef = doc(db, 'negocios', '_config', 'movimientos', 'cajas');
 
     const regTabsEl = document.getElementById('regTabs');
+    const regActionsEl = document.getElementById('regActions');
     function getMovsRef() { return collection(db, 'negocios', currentRegisterId, 'movimientos'); }
+    function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
 
     function renderTabs() {
       regTabsEl.innerHTML = REGISTERS.map(r => `
-        <button class="reg-tab ${r.id === currentRegisterId ? 'active' : ''}" data-id="${r.id}">${r.emoji} ${r.label}</button>
-      `).join('');
-      regTabsEl.querySelectorAll('.reg-tab').forEach(btn => {
+        <button class="reg-tab ${r.id === currentRegisterId ? 'active' : ''}" data-id="${r.id}">${esc(r.emoji)} ${esc(r.label)}</button>
+      `).join('') + `<button class="reg-tab add" id="addRegBtn">+ Nueva caja</button>`;
+      regTabsEl.querySelectorAll('.reg-tab[data-id]').forEach(btn => {
         btn.addEventListener('click', () => {
           if (btn.dataset.id === currentRegisterId) return;
           currentRegisterId = btn.dataset.id;
@@ -977,8 +1012,79 @@
           switchListener();
         });
       });
+      document.getElementById('addRegBtn').addEventListener('click', openNewRegister);
+
+      const cur = REGISTERS.find(r => r.id === currentRegisterId);
+      if (cur && REGISTERS.length > 1) {
+        regActionsEl.innerHTML = `<button class="reg-del" id="delRegBtn">🗑 Eliminar caja «${esc(cur.label)}»</button>`;
+        document.getElementById('delRegBtn').addEventListener('click', deleteCurrentRegister);
+      } else {
+        regActionsEl.innerHTML = '';
+      }
     }
-    renderTabs();
+
+    async function saveCajas(list) {
+      await setDoc(cajasDocRef, { lista: list, actualizado: serverTimestamp() });
+    }
+
+    // ---- crear caja ----
+    const newRegOverlay = document.getElementById('newRegOverlay');
+    const newRegName = document.getElementById('newRegName');
+    const newRegErr = document.getElementById('newRegErr');
+    function openNewRegister() {
+      newRegName.value = ''; newRegErr.textContent = '';
+      newRegOverlay.classList.remove('hidden');
+      setTimeout(() => newRegName.focus(), 50);
+    }
+    function closeNewRegister() { newRegOverlay.classList.add('hidden'); }
+    document.getElementById('newRegCancel').addEventListener('click', closeNewRegister);
+    newRegOverlay.addEventListener('click', (e) => { if (e.target === newRegOverlay) closeNewRegister(); });
+    newRegName.addEventListener('keydown', (e) => { if (e.key === 'Enter') document.getElementById('newRegCreate').click(); });
+    document.getElementById('newRegCreate').addEventListener('click', async () => {
+      const label = newRegName.value.trim().replace(/\s+/g, ' ');
+      if (!label) { newRegErr.textContent = 'Escribe un nombre.'; return; }
+      if (REGISTERS.some(r => r.label.toLowerCase() === label.toLowerCase())) {
+        newRegErr.textContent = 'Ya existe una caja con ese nombre.'; return;
+      }
+      const id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+      const prevId = currentRegisterId;
+      currentRegisterId = id;
+      localStorage.setItem(REG_KEY, id);
+      try {
+        await saveCajas(REGISTERS.concat([{ id: id, label: label, emoji: '💰' }]));
+        closeNewRegister();
+      } catch (err) {
+        currentRegisterId = prevId;
+        localStorage.setItem(REG_KEY, prevId);
+        newRegErr.textContent = 'No se pudo crear la caja. Revisa tu conexión e inténtalo de nuevo.';
+        console.error(err);
+      }
+    });
+
+    // ---- eliminar la caja activa (con todos sus movimientos) ----
+    async function deleteCurrentRegister() {
+      if (REGISTERS.length <= 1) { alert('Debe quedar al menos una caja.'); return; }
+      const reg = REGISTERS.find(r => r.id === currentRegisterId);
+      if (!reg) return;
+      const ok = confirm('¿Eliminar la caja «' + reg.label + '» con TODOS sus movimientos y cálculos?\n\nEsto no se puede deshacer.');
+      if (!ok) return;
+      const btn = document.getElementById('delRegBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Eliminando…'; }
+      try {
+        const snap = await getDocs(collection(db, 'negocios', reg.id, 'movimientos'));
+        let batch = writeBatch(db), n = 0;
+        for (const d of snap.docs) {
+          batch.delete(d.ref); n++;
+          if (n === 400) { await batch.commit(); batch = writeBatch(db); n = 0; }
+        }
+        if (n > 0) await batch.commit();
+        await saveCajas(REGISTERS.filter(r => r.id !== reg.id));
+      } catch (err) {
+        alert('No se pudo eliminar la caja. Revisa tu conexión e inténtalo de nuevo.');
+        console.error(err);
+        renderTabs();
+      }
+    }
 
     // ---- total combinado de todas las cajas (siempre activo, sin importar la pestaña) ----
     const registerNets = {};
@@ -999,30 +1105,61 @@
       const sum = Object.values(registerNets).reduce((a, b) => a + b, 0);
       grandTotalAmtEl.textContent = fmt(sum);
     }
-    function watchAllRegistersTotals() {
-      REGISTERS.forEach(r => {
-        const q = query(collection(db, 'negocios', r.id, 'movimientos'));
-        onSnapshot(q, (snap) => {
+    const totalUnsubs = {};
+    function syncTotalsWatchers() {
+      const ids = REGISTERS.map(r => r.id);
+      Object.keys(totalUnsubs).forEach(id => {
+        if (!ids.includes(id)) {
+          totalUnsubs[id](); delete totalUnsubs[id];
+          delete registerNets[id]; delete registerStats[id];
+        }
+      });
+      ids.forEach(id => {
+        if (totalUnsubs[id]) return;
+        const q = query(collection(db, 'negocios', id, 'movimientos'));
+        totalUnsubs[id] = onSnapshot(q, (snap) => {
           let net = 0, tin = 0, tout = 0;
           snap.forEach(d => {
             const m = d.data();
             net += m.tipo === 'ingreso' ? m.monto : -m.monto;
             if (m.tipo === 'ingreso') tin += m.monto; else tout += m.monto;
           });
-          registerNets[r.id] = net;
-          registerStats[r.id] = { in: tin, out: tout };
+          registerNets[id] = net;
+          registerStats[id] = { in: tin, out: tout };
           updateGrandTotal();
         });
       });
+      updateGrandTotal();
     }
 
-    let totalsWatching = false;
+    // ---- lista de cajas (en tiempo real) ----
+    let cajasWatching = false, listenedId = null;
+    function applyRegisters(list) {
+      REGISTERS = list.slice();
+      if (!REGISTERS.some(r => r.id === currentRegisterId)) {
+        currentRegisterId = REGISTERS[0].id;
+        localStorage.setItem(REG_KEY, currentRegisterId);
+      }
+      renderTabs();
+      syncTotalsWatchers();
+      if (listenedId !== currentRegisterId) { listenedId = currentRegisterId; switchListener(); }
+    }
+    function watchCajas() {
+      onSnapshot(cajasDocRef, (snap) => {
+        const data = snap.exists() ? snap.data() : null;
+        const list = data && Array.isArray(data.lista) && data.lista.length ? data.lista : DEFAULT_REGISTERS;
+        applyRegisters(list);
+      }, (err) => {
+        console.error(err);
+        applyRegisters(DEFAULT_REGISTERS);   // si no se puede leer la lista, se usan las cajas por defecto
+      });
+    }
+
     onAuthStateChanged(auth, (user) => {
       if (user) {
         statusDot.classList.remove('off');
         statusText.textContent = 'Sincronizado';
-        switchListener();
-        if (!totalsWatching) { totalsWatching = true; watchAllRegistersTotals(); }
+        if (!cajasWatching) { cajasWatching = true; watchCajas(); }
       } else {
         statusDot.classList.add('off');
         statusText.textContent = 'Conectando…';
