@@ -454,6 +454,16 @@
   }
   .voucher-actions button:active{ transform: translateY(3px); box-shadow: 0 1px 0 var(--ink); }
   .voucher-actions .v-close{ grid-column: 1 / -1; background: var(--surface); color: var(--ink); }
+  .voucher-actions .v-summary{ grid-column: 1 / -1; background: var(--ink); color:#fff; }
+  .voucher-actions .v-summary.hidden{ display:none; }
+  .ticker-voucher{
+    display:block; width:100%; margin-top:14px;
+    border: 3px solid var(--ink); border-radius: 12px;
+    padding: 10px 8px; cursor:pointer;
+    font-family:'Baloo 2', sans-serif; font-weight:700; font-size:14px;
+    background: var(--pink); color:#fff; box-shadow: 0 3px 0 var(--ink);
+  }
+  .ticker-voucher:active{ transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
 </style>
 </head>
 <body>
@@ -493,6 +503,7 @@
       <div class="in"><span>Ingresado</span><span id="totalIn">RD$ 0.00</span></div>
       <div class="out"><span>Retirado</span><span id="totalOut">RD$ 0.00</span></div>
     </div>
+    <button class="ticker-voucher" id="tickerVoucherBtn">🧾 Voucher del saldo</button>
   </div>
 
   <div class="actions">
@@ -531,6 +542,7 @@
     <div class="voucher-actions">
       <button id="voucherDownload">⬇ Descargar</button>
       <button id="voucherShare">📤 Compartir</button>
+      <button class="v-summary" id="voucherSummaryBtn">🧮 Voucher del saldo y total general</button>
       <button class="v-close" id="voucherClose">Cerrar</button>
     </div>
   </div>
@@ -688,17 +700,147 @@
     ctx.fillStyle = MUTED; ctx.font = "700 16px 'Nunito', sans-serif";
     ctx.fillText('@tabla.pizzard  ·  Desde 2018  ·  829-339-5009', cx, fy + 70);
   }
+
+  function money(n) {
+    const abs = Math.abs(Number(n) || 0);
+    return (n < 0 ? '− ' : '') + 'RD$ ' + abs.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  async function drawSummaryVoucher(canvas, d) {
+    // d: { caja, in, out, net, fecha (Date), cajas: [{label, in, out, net}], total }
+    try {
+      await Promise.all([
+        document.fonts.load("800 30px 'Baloo 2'"),
+        document.fonts.load("700 30px 'Space Mono'"),
+        document.fonts.load("700 20px 'Nunito'")
+      ]);
+    } catch (e) { /* fuentes del sistema */ }
+    const logo = await loadLogo();
+
+    const n = d.cajas.length;
+    const W = 600;
+    const rowsStart = 742;
+    const H = rowsStart + (Math.max(n, 1) - 1) * 34 + 168;
+    canvas.width = W; canvas.height = H;   // (esto limpia el lienzo)
+    const ctx = canvas.getContext('2d');
+    const INK = '#1A1A1A', PINK = '#E91B78', MUTED = '#9A6B7C', GREEN = '#1F8F5F', RED = '#D9463A';
+
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = PINK; ctx.fillRect(0, 0, W, 150);
+    ctx.fillStyle = INK; ctx.fillRect(0, 150, W, 6);
+
+    const cx = W / 2, cy = 150, r = 95;
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, r + 8, 0, Math.PI * 2); ctx.fillStyle = INK; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r + 2, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+    if (logo) {
+      const sc = (r * 2) / 490;
+      ctx.drawImage(logo, cx - 255 * sc, cy - 258 * sc, logo.width * sc, logo.height * sc);
+    } else {
+      ctx.fillStyle = PINK; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+      ctx.fillStyle = '#fff'; ctx.font = "800 40px 'Baloo 2', sans-serif"; ctx.textAlign = 'center';
+      ctx.fillText('Tabla Pizza', cx, cy + 14);
+    }
+    ctx.restore();
+
+    function dashed(y) {
+      ctx.strokeStyle = PINK; ctx.lineWidth = 3; ctx.setLineDash([10, 8]);
+      ctx.beginPath(); ctx.moveTo(40, y); ctx.lineTo(W - 40, y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    function fitMoney(text, maxSize, maxW, font) {
+      let size = maxSize;
+      ctx.font = `700 ${size}px ${font}`;
+      while (ctx.measureText(text).width > maxW && size > 20) { size -= 2; ctx.font = `700 ${size}px ${font}`; }
+    }
+
+    const fecha = d.fecha instanceof Date ? d.fecha : new Date();
+    const fechaStr = fecha.toLocaleDateString('es-DO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const horaStr = fecha.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' });
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = INK; ctx.font = "800 26px 'Baloo 2', sans-serif";
+    ctx.fillText('RESUMEN DE CAJA', cx, 301);
+    ctx.fillStyle = MUTED; ctx.font = "700 18px 'Nunito', sans-serif";
+    ctx.fillText('Caja: ' + d.caja, cx, 331);
+    ctx.font = "700 15px 'Nunito', sans-serif";
+    ctx.fillText(fechaStr.charAt(0).toUpperCase() + fechaStr.slice(1) + ' · ' + horaStr, cx, 355);
+
+    // saldo actual (grande)
+    ctx.fillStyle = MUTED; ctx.font = "800 15px 'Nunito', sans-serif";
+    ctx.fillText('SALDO ACTUAL', cx, 405);
+    ctx.fillStyle = d.net >= 0 ? GREEN : RED;
+    const saldoTxt = money(d.net);
+    fitMoney(saldoTxt, 54, W - 80, "'Space Mono', monospace");
+    ctx.fillText(saldoTxt, cx, 462);
+
+    dashed(490);
+    function row2(label, value, color, y) {
+      ctx.textAlign = 'left'; ctx.fillStyle = MUTED; ctx.font = "800 15px 'Nunito', sans-serif";
+      ctx.fillText(label.toUpperCase(), 44, y);
+      ctx.textAlign = 'right'; ctx.fillStyle = color; ctx.font = "700 22px 'Space Mono', monospace";
+      ctx.fillText(value, W - 44, y);
+    }
+    row2('Ingresado', '+ ' + money(d.in), GREEN, 530);
+    row2('Retirado', '− ' + money(d.out), RED, 570);
+    dashed(600);
+
+    // total de todas las cajas
+    ctx.textAlign = 'center';
+    ctx.fillStyle = MUTED; ctx.font = "800 15px 'Nunito', sans-serif";
+    ctx.fillText('TOTAL DE TODAS LAS CAJAS', cx, 640);
+    ctx.fillStyle = d.total >= 0 ? INK : RED;
+    const totTxt = money(d.total);
+    fitMoney(totTxt, 40, W - 80, "'Space Mono', monospace");
+    ctx.fillText(totTxt, cx, 688);
+
+    d.cajas.forEach((c, i) => {
+      const y = rowsStart + i * 34;
+      ctx.textAlign = 'left'; ctx.fillStyle = INK; ctx.font = "700 18px 'Nunito', sans-serif";
+      ctx.fillText(c.label, 44, y);
+      ctx.textAlign = 'right'; ctx.fillStyle = c.net >= 0 ? INK : RED; ctx.font = "700 18px 'Space Mono', monospace";
+      ctx.fillText(money(c.net), W - 44, y);
+    });
+
+    // pie
+    const fy = H - 118;
+    dashed(fy);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = PINK; ctx.font = "800 24px 'Baloo 2', sans-serif";
+    ctx.fillText('¡Gracias! · Pizza hecha con pasión', cx, fy + 40);
+    ctx.fillStyle = MUTED; ctx.font = "700 16px 'Nunito', sans-serif";
+    ctx.fillText('@tabla.pizzard  ·  Desde 2018  ·  829-339-5009', cx, fy + 70);
+  }
   // </voucher>
 
   const voucherOverlay = document.getElementById('voucherOverlay');
   const voucherCanvas = document.getElementById('voucherCanvas');
   let currentVoucher = null;
 
+  const voucherSummaryBtn = document.getElementById('voucherSummaryBtn');
+  let summaryProvider = null;   // se asigna más abajo, cuando la app ya conectó con Firebase
+
   async function showVoucher(v) {
     currentVoucher = v;
+    voucherCanvas.width = 600; voucherCanvas.height = 800;
+    voucherSummaryBtn.classList.toggle('hidden', !summaryProvider);
     voucherOverlay.classList.remove('hidden');
     await drawVoucher(voucherCanvas, v);
   }
+  async function showSummaryVoucher() {
+    if (!summaryProvider) return;
+    const data = summaryProvider();
+    if (!data) { alert('Espera a que termine de cargar (arriba debe decir "Sincronizado") y vuelve a intentar.'); return; }
+    const f = data.fecha;
+    const pad = (x) => String(x).padStart(2, '0');
+    currentVoucher = { numero: 'resumen-' + f.getFullYear() + pad(f.getMonth() + 1) + pad(f.getDate()) + '-' + pad(f.getHours()) + pad(f.getMinutes()) };
+    voucherSummaryBtn.classList.add('hidden');
+    voucherOverlay.classList.remove('hidden');
+    await drawSummaryVoucher(voucherCanvas, data);
+  }
+  voucherSummaryBtn.addEventListener('click', showSummaryVoucher);
+  document.getElementById('tickerVoucherBtn').addEventListener('click', showSummaryVoucher);
   function voucherFileName() {
     return 'voucher-tabla-pizza-' + (currentVoucher ? currentVoucher.numero : 'x') + '.png';
   }
@@ -840,6 +982,19 @@
 
     // ---- total combinado de todas las cajas (siempre activo, sin importar la pestaña) ----
     const registerNets = {};
+    const registerStats = {};   // por caja: { in, out } (para el voucher del saldo)
+    summaryProvider = function () {
+      if (!REGISTERS.every(r => registerStats[r.id])) return null;
+      const cajas = REGISTERS.map(r => ({
+        label: r.label, in: registerStats[r.id].in, out: registerStats[r.id].out,
+        net: registerStats[r.id].in - registerStats[r.id].out
+      }));
+      const cur = cajas[REGISTERS.findIndex(r => r.id === currentRegisterId)];
+      return {
+        caja: cur.label, in: cur.in, out: cur.out, net: cur.net,
+        fecha: new Date(), cajas: cajas, total: cajas.reduce((a, c) => a + c.net, 0)
+      };
+    };
     function updateGrandTotal() {
       const sum = Object.values(registerNets).reduce((a, b) => a + b, 0);
       grandTotalAmtEl.textContent = fmt(sum);
@@ -848,12 +1003,14 @@
       REGISTERS.forEach(r => {
         const q = query(collection(db, 'negocios', r.id, 'movimientos'));
         onSnapshot(q, (snap) => {
-          let net = 0;
+          let net = 0, tin = 0, tout = 0;
           snap.forEach(d => {
             const m = d.data();
             net += m.tipo === 'ingreso' ? m.monto : -m.monto;
+            if (m.tipo === 'ingreso') tin += m.monto; else tout += m.monto;
           });
           registerNets[r.id] = net;
+          registerStats[r.id] = { in: tin, out: tout };
           updateGrandTotal();
         });
       });
